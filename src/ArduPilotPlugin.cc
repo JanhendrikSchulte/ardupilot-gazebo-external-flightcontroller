@@ -353,12 +353,6 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief Transform from world frame to NED frame
   public: gz::math::Pose3d gazeboXYZToNED;
 
-  /// \brief Last received frame rate from the ArduPilot controller
-  public: uint16_t fcu_frame_rate;
-
-  /// \brief Last received frame count from the ArduPilot controller
-  public: uint32_t fcu_frame_count = -1;
-
   /// \brief Last sent JSON string, so we can resend if needed.
   public: std::string json_str;
 
@@ -1467,28 +1461,9 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
     }
 
     // 16 / 32 channel compatibility
-    uint16_t pkt_magic{0};
-    uint16_t pkt_frame_rate{0};
-    uint16_t pkt_frame_count{0};
     std::array<uint16_t, 32> pkt_pwm;
     ssize_t recvSize{-1};
-    if (this->dataPtr->have32Channels)
-    {
-      servo_packet_32 pkt;
-      recvSize = getServoPacket(
-          this->dataPtr->sock,
-          this->dataPtr->fcu_address,
-          this->dataPtr->fcu_port_out,
-          waitMs,
-          this->dataPtr->modelName,
-          pkt);
-      pkt_magic = pkt.magic;
-      pkt_frame_rate = pkt.frame_rate;
-      pkt_frame_count = pkt.frame_count;
-      std::copy(std::begin(pkt.pwm), std::end(pkt.pwm), std::begin(pkt_pwm));
-    }
-    else
-    {
+    
       servo_packet_16 pkt;
       recvSize = getServoPacket(
           this->dataPtr->sock,
@@ -1497,11 +1472,8 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
           waitMs,
           this->dataPtr->modelName,
           pkt);
-      pkt_magic = pkt.magic;
-      pkt_frame_rate = pkt.frame_rate;
-      pkt_frame_count = pkt.frame_count;
       std::copy(std::begin(pkt.pwm), std::end(pkt.pwm), std::begin(pkt_pwm));
-    }
+    
 
     // didn't receive a packet, increment timeout count if online, then return
     if (recvSize == -1)
@@ -1539,9 +1511,6 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
     oss << "recv " << recvSize << " bytes from "
         << this->dataPtr->fcu_address << ":"
         << this->dataPtr->fcu_port_out << "\n";
-    // oss << "magic: " << pkt_magic << "\n";
-    // oss << "frame_rate: " << pkt_frame_rate << "\n";
-    oss << "frame_count: " << pkt_frame_count << "\n";
     // oss << "pwm: [";
     // for (auto i=0; i<max_servo_channels - 1; ++i) {
     //     oss << pkt_pwm[i] << ", ";
@@ -1549,18 +1518,6 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
     // oss << pkt_pwm[max_servo_channels - 1] << "]\n";
     gzdbg << "\n" << oss.str();
 #endif
-
-    // check magic, return if invalid
-    constexpr uint16_t magic_16 = 18458;
-    constexpr uint16_t magic_32 = 29569;
-    uint16_t magic = this->dataPtr->have32Channels ? magic_32 : magic_16;
-    if (magic != pkt_magic)
-    {
-        gzwarn << "Incorrect protocol magic "
-            << pkt_magic << " should be "
-            << magic << "\n";
-        return false;
-    }
 
     // the controller is online
     if (!this->dataPtr->arduPilotOnline)
@@ -1572,42 +1529,6 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
             << this->dataPtr->fcu_address << ":" << this->dataPtr->fcu_port_out
             << "\n";
     }
-
-    // update frame rate
-    this->dataPtr->fcu_frame_rate = pkt_frame_rate;
-
-    // check for controller reset
-    if (pkt_frame_count < this->dataPtr->fcu_frame_count)
-    {
-        /// \todo(anyone) implement re-initialisation
-        gzwarn << "ArduPilot controller has reset\n";
-    }
-
-    // check for duplicate frame
-    else if (pkt_frame_count == this->dataPtr->fcu_frame_count)
-    {
-        gzwarn << "Duplicate input frame\n";
-
-        // for lock-step resend last state rather than ignore
-        if (this->dataPtr->isLockStep)
-        {
-            this->SendState();
-        }
-
-        return false;
-    }
-
-    // check for skipped frames
-    else if (pkt_frame_count != this->dataPtr->fcu_frame_count + 1
-        && this->dataPtr->arduPilotOnline)
-    {
-        gzwarn << "Missed "
-            << pkt_frame_count - this->dataPtr->fcu_frame_count
-            << " input frames\n";
-    }
-
-    // update frame count
-    this->dataPtr->fcu_frame_count = pkt_frame_count;
 
     // reset the connection timeout so we don't accumulate
     this->dataPtr->connectionTimeoutCount = 0;
@@ -1995,6 +1916,5 @@ void gz::sim::systems::ArduPilotPlugin::SendState() const
     gzdbg << "sent " << bytes_sent <<  " bytes to "
         << this->dataPtr->fcu_address << ":"
         << this->dataPtr->fcu_port_out << "\n"
-        << "frame_count: " << this->dataPtr->fcu_frame_count << "\n";
 #endif
 }
