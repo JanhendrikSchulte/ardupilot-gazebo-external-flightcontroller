@@ -19,7 +19,9 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include <gz/msgs/altimeter.pb.h>
 #include <gz/msgs/imu.pb.h>
+#include <gz/msgs/magnetometer.pb.h>
 #include <gz/msgs/laserscan.pb.h>
 
 #include <algorithm>
@@ -33,6 +35,7 @@
 
 #include <gz/common/SignalHandler.hh>
 #include <gz/msgs/Utility.hh>
+#include <gz/sim/components/Altimeter.hh>
 #include <gz/sim/components/CustomSensor.hh>
 #include <gz/sim/components/Imu.hh>
 #include <gz/sim/components/Joint.hh>
@@ -42,6 +45,7 @@
 #include <gz/sim/components/JointVelocityCmd.hh>
 #include <gz/sim/components/LinearVelocity.hh>
 #include <gz/sim/components/Link.hh>
+#include <gz/sim/components/Magnetometer.hh>
 #include <gz/sim/components/Name.hh>
 #include <gz/sim/components/Pose.hh>
 #include <gz/sim/components/Sensor.hh>
@@ -199,6 +203,12 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief The entity representing the link containing the imu sensor.
   public: gz::sim::Entity imuLink{gz::sim::kNullEntity};
 
+  /// \brief The entity representing the link containing the imu sensor.
+  public: gz::sim::Entity magnetometerLink{gz::sim::kNullEntity};
+
+  /// \brief The entity representing the link containing the imu sensor.
+  public: gz::sim::Entity altimeterLink{gz::sim::kNullEntity};
+
   /// \brief The model name;
   public: std::string modelName;
 
@@ -238,6 +248,12 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief The name of the IMU sensor
   public: std::string imuName;
 
+  /// \brief The name of the magnetometer sensor
+  public: std::string magnetometerName;
+
+  /// \brief The name of the altimeter sensor
+  public: std::string altimeterName;
+
   /// \brief Set true to enforce lock-step simulation
   public: bool isLockStep{false};
 
@@ -247,17 +263,41 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief Have we initialized subscription to the IMU data yet?
   public: bool imuInitialized{false};
 
+  /// \brief Have we initialized subscription to the magnetometer data yet?
+  public: bool magnetometerInitialized{false};
+
+  /// \brief Have we initialized subscription to the altimeter data yet?
+  public: bool altimeterInitialized{false};
+
   /// \brief We need an gz-transport Node to subscribe to IMU data
   public: gz::transport::Node node;
 
   /// \brief A copy of the most recently received IMU data message
   public: gz::msgs::IMU imuMsg;
 
+  /// \brief A copy of the most recently received magnetometer data message
+  public: gz::msgs::Magnetometer magnetometerMsg;
+
+  /// \brief A copy of the most recently received altimeter data message
+  public: gz::msgs::Altimeter altimeterMsg;
+
   /// \brief Have we received at least one IMU data message?
   public: bool imuMsgValid{false};
 
+  /// \brief Have we received at least one magnetometer data message?
+  public: bool magnetometerMsgValid{false};
+
+  /// \brief Have we received at least one altimeter data message?
+  public: bool altimeterMsgValid{false};
+
   /// \brief This mutex should be used when accessing imuMsg or imuMsgValid
   public: std::mutex imuMsgMutex;
+
+  /// \brief This mutex should be used when accessing magnetometerMsg or magnetometerMsgValid
+  public: std::mutex magnetometerMsgMutex;
+
+  /// \brief This mutex should be used when accessing altimeterMsg or altimeterMsgValid
+  public: std::mutex altimeterMsgMutex;
 
   /// \brief This subscriber callback latches the most recently received
   ///        IMU data message for later use.
@@ -266,6 +306,24 @@ class gz::sim::systems::ArduPilotPluginPrivate
     std::lock_guard<std::mutex> lock(this->imuMsgMutex);
     imuMsg = _msg;
     imuMsgValid = true;
+  }
+
+  /// \brief This subscriber callback latches the most recently received
+  ///        magnetometer data message for later use.
+  public: void MagnetometerCb(const gz::msgs::Magnetometer &_msg)
+  {
+    std::lock_guard<std::mutex> lock(this->magnetometerMsgMutex);
+    magnetometerMsg = _msg;
+	magnetometerMsgValid = true;
+  }
+
+  /// \brief This subscriber callback latches the most recently received
+  ///        altimeter data message for later use.
+  public: void AltimeterCb(const gz::msgs::Altimeter &_msg)
+  {
+    std::lock_guard<std::mutex> lock(this->altimeterMsgMutex);
+    altimeterMsg = _msg;
+    altimeterMsgValid = true;
   }
 
   // Range sensors
@@ -385,7 +443,7 @@ gz::sim::systems::ArduPilotPlugin::~ArduPilotPlugin()
 void gz::sim::systems::ArduPilotPlugin::Reset(const UpdateInfo &_info,
                                               EntityComponentManager &_ecm)
 {
-  if (!_ecm.EntityHasComponentType(this->dataPtr->imuLink,
+   if (!_ecm.EntityHasComponentType(this->dataPtr->imuLink,
       components::WorldPose::typeId))
   {
       _ecm.CreateComponent(this->dataPtr->imuLink,
@@ -397,6 +455,33 @@ void gz::sim::systems::ArduPilotPlugin::Reset(const UpdateInfo &_info,
       _ecm.CreateComponent(this->dataPtr->imuLink,
       gz::sim::components::WorldLinearVelocity());
   }
+
+  if (!_ecm.EntityHasComponentType(this->dataPtr->magnetometerLink,
+      components::WorldPose::typeId))
+  {
+      _ecm.CreateComponent(this->dataPtr->magnetometerLink,
+          gz::sim::components::WorldPose());
+  }
+  if (!_ecm.EntityHasComponentType(this->dataPtr->magnetometerLink,
+      components::WorldLinearVelocity::typeId))
+  {
+      _ecm.CreateComponent(this->dataPtr->magnetometerLink,
+      gz::sim::components::WorldLinearVelocity());
+  }
+
+  if (!_ecm.EntityHasComponentType(this->dataPtr->altimeterLink,
+      components::WorldPose::typeId))
+  {
+      _ecm.CreateComponent(this->dataPtr->altimeterLink,
+          gz::sim::components::WorldPose());
+  }
+  if (!_ecm.EntityHasComponentType(this->dataPtr->altimeterLink,
+      components::WorldLinearVelocity::typeId))
+  {
+      _ecm.CreateComponent(this->dataPtr->altimeterLink,
+      gz::sim::components::WorldLinearVelocity());
+  }
+
 
   // update velocity PID for controls and apply force to joint
   for (size_t i = 0; i < this->dataPtr->controls.size(); ++i)
@@ -483,6 +568,8 @@ void gz::sim::systems::ArduPilotPlugin::Configure(
 
   // Load sensor params
   this->LoadImuSensors(sdfClone, _ecm);
+  this->LoadMagnetometerSensors(sdfClone, _ecm);
+  this->LoadAltimeterSensors(sdfClone, _ecm);
   this->LoadGpsSensors(sdfClone, _ecm);
   this->LoadRangeSensors(sdfClone, _ecm);
   this->LoadWindSensors(sdfClone, _ecm);
@@ -796,6 +883,23 @@ void gz::sim::systems::ArduPilotPlugin::LoadImuSensors(
         _sdf->Get("imuName", static_cast<std::string>("imu_sensor")).first;
 }
 
+void gz::sim::systems::ArduPilotPlugin::LoadMagnetometerSensors(
+    sdf::ElementPtr _sdf,
+    gz::sim::EntityComponentManager &/*_ecm*/)
+{
+    this->dataPtr->magnetometerName =
+        _sdf->Get("magnetometerName", static_cast<std::string>("magnetometer_sensor")).first;
+}
+
+void gz::sim::systems::ArduPilotPlugin::LoadAltimeterSensors(
+    sdf::ElementPtr _sdf,
+    gz::sim::EntityComponentManager &/*_ecm*/)
+{
+    this->dataPtr->altimeterName =
+        _sdf->Get("altimeterName", static_cast<std::string>("altimeter_sensor")).first;
+}
+
+
 /////////////////////////////////////////////////
 void gz::sim::systems::ArduPilotPlugin::LoadGpsSensors(
     sdf::ElementPtr /*_sdf*/,
@@ -1086,98 +1190,369 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         this->dataPtr->anemometerInitialized = true;
     }
 
-    // This lookup is done in PreUpdate() because in Configure()
-    // it's not possible to get the fully qualified topic name we want
-    if (!this->dataPtr->imuInitialized)
+	/* static bool calledInitMagnetometerOnce{false};
+    if (!this->dataPtr->magnetometerName.empty() &&
+        !this->dataPtr->magnetometerInitialized &&
+        !calledInitMagnetometerOnce)
     {
-        // Set unconditionally because we're only going to try this once.
-        this->dataPtr->imuInitialized = true;
-        std::string imuTopicName;
-
-        // The model must contain an imu sensor element:
-        //  <sensor name="..." type="imu">
-        //
-        // Extract the following:
-        //  - Sensor topic name: to subscribe to the imu data
-        //  - Link containing the sensor: to get the pose to transform to
-        //    the correct frame for ArduPilot
+        calledInitMagnetometerOnce = true;
+        std::string magnetometerTopicName;
 
         // try scoped names first
         auto entities = entitiesFromScopedName(
-            this->dataPtr->imuName, _ecm, this->dataPtr->model.Entity());
+            this->dataPtr->magnetometerName, _ecm, this->dataPtr->model.Entity());
 
         // fall-back to unscoped name
         if (entities.empty())
         {
           entities = EntitiesFromUnscopedName(
-            this->dataPtr->imuName, _ecm, this->dataPtr->model.Entity());
+            this->dataPtr->magnetometerName, _ecm, this->dataPtr->model.Entity());
         }
 
         if (!entities.empty())
         {
           if (entities.size() > 1)
           {
-            gzwarn << "Multiple IMU sensors with name ["
-                   << this->dataPtr->imuName << "] found. "
+            gzwarn << "Multiple magnetometer with name ["
+                   << this->dataPtr->magnetometerName << "] found. "
                    << "Using the first one.\n";
           }
 
           // select first entity
-          gz::sim::Entity imuEntity = *entities.begin();
+          this->dataPtr->magnetometerEntity = *entities.begin();
 
           // validate
-          if (!_ecm.EntityHasComponentType(imuEntity,
-              gz::sim::components::Imu::typeId))
+          if (!_ecm.EntityHasComponentType(this->dataPtr->magnetometerEntity,
+              gz::sim::components::Magnetometer::typeId))
           {
             gzerr << "Entity with name ["
-                  << this->dataPtr->imuName
-                  << "] is not an IMU sensor\n";
+                  << this->dataPtr->magnetometerName
+                  << "] is not an magnetometer.\n";
           }
           else
           {
-            gzmsg << "Found IMU sensor with name ["
-                  << this->dataPtr->imuName
-                  << "]\n";
+            gzmsg << "Found magnetometer with name ["
+                  << this->dataPtr->magnetometerName
+                  << "].\n";
 
-            // verify the parent of the imu sensor is a link.
-            gz::sim::Entity parent = _ecm.ParentEntity(imuEntity);
+            // verify the parent of the anemometer is a link.
+            gz::sim::Entity parent = _ecm.ParentEntity(
+                this->dataPtr->magnetometerEntity);
             if (_ecm.EntityHasComponentType(parent,
                 gz::sim::components::Link::typeId))
             {
-                this->dataPtr->imuLink = parent;
+                magnetometerTopicName = gz::sim::scopedName(
+                    this->dataPtr->magnetometerEntity, _ecm) + "/magnetometer";
 
-                imuTopicName = gz::sim::scopedName(
-                    imuEntity, _ecm) + "/imu";
-
-                gzdbg << "Computed IMU topic to be: "
-                    << imuTopicName << std::endl;
+                gzdbg << "Computed magnetometers topic to be: "
+                    << magnetometerTopicName << ".\n";
             }
             else
             {
-              gzerr << "Parent of IMU sensor ["
-                    << this->dataPtr->imuName
-                    << "] is not a link\n";
+              gzerr << "Parent of magnetometer ["
+                    << this->dataPtr->magnetometerName
+                    << "] is not a link.\n";
             }
           }
         }
         else
         {
             gzerr << "[" << this->dataPtr->modelName << "] "
-                  << "imu_sensor [" << this->dataPtr->imuName
+                  << "magnetometer [" << this->dataPtr->magnetometerName
                   << "] not found, abort ArduPilot plugin." << "\n";
             return;
         }
 
-        this->dataPtr->node.Subscribe(imuTopicName,
-            &gz::sim::systems::ArduPilotPluginPrivate::ImuCb,
+        this->dataPtr->node.Subscribe(magnetometerTopicName,
+            &gz::sim::systems::ArduPilotPluginPrivate::MagnetometerCb,
             this->dataPtr.get());
 
-        // Make sure that the 'imuLink' entity has WorldPose
+        // Make sure that the anemometer entity has WorldPose
         // and WorldLinearVelocity components, which we'll need later.
         enableComponent<components::WorldPose>(
-            _ecm, this->dataPtr->imuLink, true);
+            _ecm, this->dataPtr->magnetometerEntity, true);
         enableComponent<components::WorldLinearVelocity>(
-            _ecm, this->dataPtr->imuLink, true);
+            _ecm, this->dataPtr->magnetometerEntity, true);
+
+        this->dataPtr->magnetometerInitialized = true;
+    } */
+
+    // This lookup is done in PreUpdate() because in Configure()
+    // it's not possible to get the fully qualified topic name we want
+    if (!this->dataPtr->imuInitialized || !this->dataPtr->magnetometerInitialized || !this->dataPtr->altimeterInitialized)
+    {
+		if (!this->dataPtr->imuInitialized) {
+			// Set unconditionally because we're only going to try this once.
+        	this->dataPtr->imuInitialized = true;
+        	std::string imuTopicName;
+
+        	// The model must contain an imu sensor element:
+        	//  <sensor name="..." type="imu">
+        	//
+        	// Extract the following:
+        	//  - Sensor topic name: to subscribe to the imu data
+        	//  - Link containing the sensor: to get the pose to transform to
+        	//    the correct frame for ArduPilot
+
+        	// try scoped names first
+        	auto entities = entitiesFromScopedName(
+        	    this->dataPtr->imuName, _ecm, this->dataPtr->model.Entity());
+
+        	// fall-back to unscoped name
+        	if (entities.empty())
+        	{
+        	  entities = EntitiesFromUnscopedName(
+        	    this->dataPtr->imuName, _ecm, this->dataPtr->model.Entity());
+        	}
+
+        	if (!entities.empty())
+        	{
+        	  if (entities.size() > 1)
+        	  {
+        	    gzerr << "Multiple IMU sensors with name ["
+        	           << this->dataPtr->imuName << "] found. "
+        	           << "Using the first one.\n";
+        	  }
+
+        	  // select first entity
+        	  gz::sim::Entity imuEntity = *entities.begin();
+
+        	  // validate
+        	  if (!_ecm.EntityHasComponentType(imuEntity,
+        	      gz::sim::components::Imu::typeId))
+        	  {
+        	    gzerr << "Entity with name ["
+        	          << this->dataPtr->imuName
+        	          << "] is not an IMU sensor\n";
+        	  }
+        	  else
+        	  {
+        	    gzdbg << "Found IMU sensor with name ["
+        	          << this->dataPtr->imuName
+        	          << "]\n";
+
+        	    // verify the parent of the imu sensor is a link.
+        	    gz::sim::Entity parent = _ecm.ParentEntity(imuEntity);
+        	    if (_ecm.EntityHasComponentType(parent,
+        	        gz::sim::components::Link::typeId))
+        	    {
+        	        this->dataPtr->imuLink = parent;
+
+        	        imuTopicName = gz::sim::scopedName(
+        	            imuEntity, _ecm) + "/imu";
+
+        	        gzdbg << "Computed IMU topic to be: "
+        	            << imuTopicName << std::endl;
+        	    }
+        	    else
+        	    {
+        	      gzerr << "Parent of IMU sensor ["
+        	            << this->dataPtr->imuName
+        	            << "] is not a link\n";
+        	    }
+        	  }
+        	}
+        	else
+        	{
+        	    gzerr << "[" << this->dataPtr->modelName << "] "
+        	          << "imu_sensor [" << this->dataPtr->imuName
+        	          << "] not found, abort ArduPilot plugin." << "\n";
+        	    return;
+        	}
+
+        	this->dataPtr->node.Subscribe(imuTopicName,
+        	    &gz::sim::systems::ArduPilotPluginPrivate::ImuCb,
+        	    this->dataPtr.get());
+
+        	// Make sure that the 'imuLink' entity has WorldPose
+        	// and WorldLinearVelocity components, which we'll need later.
+        	enableComponent<components::WorldPose>(
+        	    _ecm, this->dataPtr->imuLink, true);
+        	enableComponent<components::WorldLinearVelocity>(
+        	    _ecm, this->dataPtr->imuLink, true);
+		}
+        
+		if (!this->dataPtr->magnetometerInitialized) {
+				// Set unconditionally because we're only going to try this once.
+        	this->dataPtr->magnetometerInitialized = true;
+        	std::string magnetometerTopicName;
+
+        	// The model must contain an imu sensor element:
+        	//  <sensor name="..." type="imu">
+        	//
+        	// Extract the following:
+        	//  - Sensor topic name: to subscribe to the imu data
+        	//  - Link containing the sensor: to get the pose to transform to
+        	//    the correct frame for ArduPilot
+
+        	// try scoped names first
+        	auto entities = entitiesFromScopedName(
+        	    this->dataPtr->magnetometerName, _ecm, this->dataPtr->model.Entity());
+
+        	// fall-back to unscoped name
+        	if (entities.empty())
+        	{
+        	  entities = EntitiesFromUnscopedName(
+        	    this->dataPtr->magnetometerName, _ecm, this->dataPtr->model.Entity());
+        	}
+
+        	if (!entities.empty())
+        	{
+        	  if (entities.size() > 1)
+        	  {
+        	    gzwarn << "Multiple magnetometer sensors with name ["
+        	           << this->dataPtr->magnetometerName << "] found. "
+        	           << "Using the first one.\n";
+        	  }
+
+        	  // select first entity
+        	  gz::sim::Entity magnetometerEntity = *entities.begin();
+
+        	  // validate
+        	  if (!_ecm.EntityHasComponentType(magnetometerEntity,
+        	      gz::sim::components::Magnetometer::typeId))
+        	  {
+        	    gzerr << "Entity with name ["
+        	          << this->dataPtr->magnetometerName
+        	          << "] is not an magnetometer sensor\n";
+        	  }
+        	  else
+        	  {
+        	    gzmsg << "Found magnetometer sensor with name ["
+        	          << this->dataPtr->magnetometerName
+        	          << "]\n";
+
+        	    // verify the parent of the magnetometer sensor is a link.
+        	    gz::sim::Entity parent = _ecm.ParentEntity(magnetometerEntity);
+        	    if (_ecm.EntityHasComponentType(parent,
+        	        gz::sim::components::Link::typeId))
+        	    {
+        	        this->dataPtr->magnetometerLink = parent;
+
+        	        magnetometerTopicName = gz::sim::scopedName(
+        	            magnetometerEntity, _ecm) + "/magnetometer";
+
+        	        gzdbg << "Computed magnetometer topic to be: "
+        	            << magnetometerTopicName << std::endl;
+        	    }
+        	    else
+        	    {
+        	      gzerr << "Parent of magnetometer sensor ["
+        	            << this->dataPtr->magnetometerName
+        	            << "] is not a link\n";
+        	    }
+        	  }
+        	}
+        	else
+        	{
+        	    gzerr << "[" << this->dataPtr->modelName << "] "
+        	          << "magnetometer_sensor [" << this->dataPtr->magnetometerName
+        	          << "] not found, abort ArduPilot plugin." << "\n";
+        	    return;
+        	}
+
+        	this->dataPtr->node.Subscribe(magnetometerTopicName,
+        	    &gz::sim::systems::ArduPilotPluginPrivate::MagnetometerCb,
+        	    this->dataPtr.get());
+
+        	// Make sure that the 'magnetometerLink' entity has WorldPose
+        	// and WorldLinearVelocity components, which we'll need later.
+        	enableComponent<components::WorldPose>(
+        	    _ecm, this->dataPtr->magnetometerLink, true);
+			enableComponent<components::WorldLinearVelocity>(
+        	    _ecm, this->dataPtr->magnetometerLink, true);
+		}
+
+		if (!this->dataPtr->altimeterInitialized) {
+				// Set unconditionally because we're only going to try this once.
+        	this->dataPtr->altimeterInitialized = true;
+        	std::string altimeterTopicName;
+
+        	// The model must contain an imu sensor element:
+        	//  <sensor name="..." type="imu">
+        	//
+        	// Extract the following:
+        	//  - Sensor topic name: to subscribe to the imu data
+        	//  - Link containing the sensor: to get the pose to transform to
+        	//    the correct frame for ArduPilot
+
+        	// try scoped names first
+        	auto entities = entitiesFromScopedName(
+        	    this->dataPtr->altimeterName, _ecm, this->dataPtr->model.Entity());
+
+        	// fall-back to unscoped name
+        	if (entities.empty())
+        	{
+        	  entities = EntitiesFromUnscopedName(
+        	    this->dataPtr->altimeterName, _ecm, this->dataPtr->model.Entity());
+        	}
+
+        	if (!entities.empty())
+        	{
+        	  if (entities.size() > 1)
+        	  {
+        	    gzwarn << "Multiple altimeter sensors with name ["
+        	           << this->dataPtr->magnetometerName << "] found. "
+        	           << "Using the first one.\n";
+        	  }
+
+        	  // select first entity
+        	  gz::sim::Entity altimeterEntity = *entities.begin();
+
+        	  // validate
+        	  if (!_ecm.EntityHasComponentType(altimeterEntity,
+        	      gz::sim::components::Altimeter::typeId))
+        	  {
+        	    gzerr << "Entity with name ["
+        	          << this->dataPtr->altimeterName
+        	          << "] is not an altimeter sensor\n";
+        	  }
+        	  else
+        	  {
+        	    gzmsg << "Found altimeter sensor with name ["
+        	          << this->dataPtr->altimeterName
+        	          << "]\n";
+
+        	    // verify the parent of the altimeter sensor is a link.
+        	    gz::sim::Entity parent = _ecm.ParentEntity(altimeterEntity);
+        	    if (_ecm.EntityHasComponentType(parent,
+        	        gz::sim::components::Link::typeId))
+        	    {
+        	        this->dataPtr->altimeterLink = parent;
+
+        	        altimeterTopicName = gz::sim::scopedName(
+        	            altimeterEntity, _ecm) + "/altimeter";
+
+        	        gzdbg << "Computed magnetometer topic to be: "
+        	            << altimeterTopicName << std::endl;
+        	    }
+        	    else
+        	    {
+        	      gzerr << "Parent of altimeter sensor ["
+        	            << this->dataPtr->altimeterName
+        	            << "] is not a link\n";
+        	    }
+        	  }
+        	}
+        	else
+        	{
+        	    gzerr << "[" << this->dataPtr->modelName << "] "
+        	          << "altimeter_sensor [" << this->dataPtr->altimeterName
+        	          << "] not found, abort ArduPilot plugin." << "\n";
+        	    return;
+        	}
+
+        	this->dataPtr->node.Subscribe(altimeterTopicName,
+        	    &gz::sim::systems::ArduPilotPluginPrivate::AltimeterCb,
+        	    this->dataPtr.get());
+
+        	// Make sure that the 'magnetometerLink' entity has WorldPose
+        	// and WorldLinearVelocity components, which we'll need later.
+        	enableComponent<components::WorldPose>(
+        	    _ecm, this->dataPtr->altimeterLink, true);
+			enableComponent<components::WorldLinearVelocity>(
+        	    _ecm, this->dataPtr->altimeterLink, true);
+		}
     }
     else
     {
@@ -1615,6 +1990,30 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
         imuMsg = this->dataPtr->imuMsg;
     }
 
+ 	gz::msgs::Magnetometer magnetometerMsg;
+    {
+        std::lock_guard<std::mutex> lock(this->dataPtr->magnetometerMsgMutex);
+        // Wait until we've received a valid message.
+        if (!this->dataPtr->magnetometerMsgValid)
+        {
+            return;
+        }
+        magnetometerMsg = this->dataPtr->magnetometerMsg;
+    }
+
+	gz::msgs::Altimeter altimeterMsg;
+    {
+        std::lock_guard<std::mutex> lock(this->dataPtr->altimeterMsgMutex);
+        // Wait until we've received a valid message.
+        if (!this->dataPtr->altimeterMsgValid)
+        {
+            return;
+        }
+        altimeterMsg = this->dataPtr->altimeterMsg;
+    }
+
+	//gzerr << altimeterMsg.vertical_position();
+
     // it is assumed that the imu orientation conforms to the
     // aircraft convention:
     //   x-forward
@@ -1805,9 +2204,6 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
     rapidjson::Writer<rapidjson::StringBuffer> writer(s);
 
     writer.StartObject();
-
-    writer.Key("timestamp");
-    writer.Double(timestamp);
 
     writer.Key("imu");
     writer.StartObject();

@@ -199,7 +199,9 @@
       <gazeboXYZToNED degrees="true">0 0 0 180 0 90</gazeboXYZToNED>
 
       <!-- Sensors -->
-      <imuName>iris_with_standoffs::imu_link::imu_sensor</imuName>
+      <imuName>iris_with_standoffs::sensor_box_link::imu_sensor</imuName>
+      <magnetometerName>iris_with_standoffs::sensor_box_link::magnetometer_sensor</magnetometerName>
+      <altimeterName>iris_with_standoffs::sensor_box_link::altimeter_sensor</altimeterName>
 
       <!--
           incoming control command [0, 1]

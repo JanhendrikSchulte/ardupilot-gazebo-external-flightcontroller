@@ -117,6 +117,16 @@ class GZ_SIM_VISIBLE ArduPilotPlugin:
       sdf::ElementPtr _sdf,
       gz::sim::EntityComponentManager &_ecm);
 
+  /// \brief Load magnetometer sensors
+  private: void LoadMagnetometerSensors(
+      sdf::ElementPtr _sdf,
+      gz::sim::EntityComponentManager &_ecm);
+
+  /// \brief Load magnetometer sensors
+  private: void LoadAltimeterSensors(
+      sdf::ElementPtr _sdf,
+      gz::sim::EntityComponentManager &_ecm);
+
   /// \brief Load GPS sensors
   private: void LoadGpsSensors(
       sdf::ElementPtr _sdf,
