@@ -19,9 +19,7 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
-#include <gz/msgs/altimeter.pb.h>
 #include <gz/msgs/imu.pb.h>
-#include <gz/msgs/magnetometer.pb.h>
 #include <gz/msgs/laserscan.pb.h>
 
 #include <algorithm>
@@ -35,7 +33,6 @@
 
 #include <gz/common/SignalHandler.hh>
 #include <gz/msgs/Utility.hh>
-#include <gz/sim/components/Altimeter.hh>
 #include <gz/sim/components/CustomSensor.hh>
 #include <gz/sim/components/Imu.hh>
 #include <gz/sim/components/Joint.hh>
@@ -45,7 +42,6 @@
 #include <gz/sim/components/JointVelocityCmd.hh>
 #include <gz/sim/components/LinearVelocity.hh>
 #include <gz/sim/components/Link.hh>
-#include <gz/sim/components/Magnetometer.hh>
 #include <gz/sim/components/Name.hh>
 #include <gz/sim/components/Pose.hh>
 #include <gz/sim/components/Sensor.hh>
@@ -60,6 +56,17 @@
 #include <gz/math/Vector3.hh>
 #include <gz/plugin/Register.hh>
 #include <gz/transport/Node.hh>
+
+#include "Config.hh"
+
+#ifdef ADD_MAGNETOMETER
+#include <gz/msgs/magnetometer.pb.h>
+#include <gz/sim/components/Magnetometer.hh>
+#endif
+#ifdef ADD_ALTIMETER
+#include <gz/msgs/altimeter.pb.h>
+#include <gz/sim/components/Altimeter.hh>
+#endif
 
 #include <sdf/sdf.hh>
 
@@ -203,11 +210,14 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief The entity representing the link containing the imu sensor.
   public: gz::sim::Entity imuLink{gz::sim::kNullEntity};
 
+#ifdef ADD_MAGNETOMETER
   /// \brief The entity representing the link containing the imu sensor.
   public: gz::sim::Entity magnetometerLink{gz::sim::kNullEntity};
-
+#endif
+#ifdef ADD_ALTIMETER
   /// \brief The entity representing the link containing the imu sensor.
   public: gz::sim::Entity altimeterLink{gz::sim::kNullEntity};
+#endif
 
   /// \brief The model name;
   public: std::string modelName;
@@ -248,11 +258,14 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief The name of the IMU sensor
   public: std::string imuName;
 
+#ifdef ADD_MAGNETOMETER
   /// \brief The name of the magnetometer sensor
   public: std::string magnetometerName;
-
+#endif
+#ifdef ADD_ALTIMETER
   /// \brief The name of the altimeter sensor
   public: std::string altimeterName;
+#endif
 
   /// \brief Set true to enforce lock-step simulation
   public: bool isLockStep{false};
@@ -263,11 +276,14 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief Have we initialized subscription to the IMU data yet?
   public: bool imuInitialized{false};
 
+#ifdef ADD_MAGNETOMETER
   /// \brief Have we initialized subscription to the magnetometer data yet?
   public: bool magnetometerInitialized{false};
-
+#endif
+#ifdef ADD_ALTIMETER
   /// \brief Have we initialized subscription to the altimeter data yet?
   public: bool altimeterInitialized{false};
+#endif
 
   /// \brief We need an gz-transport Node to subscribe to IMU data
   public: gz::transport::Node node;
@@ -275,29 +291,38 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief A copy of the most recently received IMU data message
   public: gz::msgs::IMU imuMsg;
 
+#ifdef ADD_MAGNETOMETER
   /// \brief A copy of the most recently received magnetometer data message
   public: gz::msgs::Magnetometer magnetometerMsg;
-
+#endif
+#ifdef ADD_ALTIMETER
   /// \brief A copy of the most recently received altimeter data message
   public: gz::msgs::Altimeter altimeterMsg;
+#endif
 
   /// \brief Have we received at least one IMU data message?
   public: bool imuMsgValid{false};
 
+#ifdef ADD_MAGNETOMETER
   /// \brief Have we received at least one magnetometer data message?
   public: bool magnetometerMsgValid{false};
-
+#endif
+#ifdef ADD_ALTIMETER
   /// \brief Have we received at least one altimeter data message?
   public: bool altimeterMsgValid{false};
+#endif
 
   /// \brief This mutex should be used when accessing imuMsg or imuMsgValid
   public: std::mutex imuMsgMutex;
 
+#ifdef ADD_MAGNETOMETER
   /// \brief This mutex should be used when accessing magnetometerMsg or magnetometerMsgValid
   public: std::mutex magnetometerMsgMutex;
-
+#endif
+#ifdef ADD_ALTIMETER
   /// \brief This mutex should be used when accessing altimeterMsg or altimeterMsgValid
   public: std::mutex altimeterMsgMutex;
+#endif
 
   /// \brief This subscriber callback latches the most recently received
   ///        IMU data message for later use.
@@ -308,6 +333,7 @@ class gz::sim::systems::ArduPilotPluginPrivate
     imuMsgValid = true;
   }
 
+#ifdef ADD_MAGNETOMETER
   /// \brief This subscriber callback latches the most recently received
   ///        magnetometer data message for later use.
   public: void MagnetometerCb(const gz::msgs::Magnetometer &_msg)
@@ -316,7 +342,8 @@ class gz::sim::systems::ArduPilotPluginPrivate
     magnetometerMsg = _msg;
 	magnetometerMsgValid = true;
   }
-
+#endif
+#ifdef ADD_ALTIMETER
   /// \brief This subscriber callback latches the most recently received
   ///        altimeter data message for later use.
   public: void AltimeterCb(const gz::msgs::Altimeter &_msg)
@@ -325,6 +352,7 @@ class gz::sim::systems::ArduPilotPluginPrivate
     altimeterMsg = _msg;
     altimeterMsgValid = true;
   }
+#endif
 
   // Range sensors
 
@@ -411,8 +439,19 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief Transform from world frame to NED frame
   public: gz::math::Pose3d gazeboXYZToNED;
 
+#ifndef EXTERNAL_TEST_MODE
+  /// \brief Last received frame rate from the ArduPilot controller
+  public: uint16_t fcu_frame_rate;
+
+  /// \brief Last received frame count from the ArduPilot controller
+  public: uint32_t fcu_frame_count = -1;
+
   /// \brief Last sent JSON string, so we can resend if needed.
   public: std::string json_str;
+#else
+  public: sensor_packet outbound_sensor_packet;
+#endif
+
 
   /// \brief A copy of the most recently received signal.
   public: int signal{0};
@@ -456,6 +495,7 @@ void gz::sim::systems::ArduPilotPlugin::Reset(const UpdateInfo &_info,
       gz::sim::components::WorldLinearVelocity());
   }
 
+#ifdef ADD_MAGNETOMETER
   if (!_ecm.EntityHasComponentType(this->dataPtr->magnetometerLink,
       components::WorldPose::typeId))
   {
@@ -468,7 +508,8 @@ void gz::sim::systems::ArduPilotPlugin::Reset(const UpdateInfo &_info,
       _ecm.CreateComponent(this->dataPtr->magnetometerLink,
       gz::sim::components::WorldLinearVelocity());
   }
-
+#endif
+#ifdef ADD_ALTIMETER
   if (!_ecm.EntityHasComponentType(this->dataPtr->altimeterLink,
       components::WorldPose::typeId))
   {
@@ -481,7 +522,7 @@ void gz::sim::systems::ArduPilotPlugin::Reset(const UpdateInfo &_info,
       _ecm.CreateComponent(this->dataPtr->altimeterLink,
       gz::sim::components::WorldLinearVelocity());
   }
-
+#endif
 
   // update velocity PID for controls and apply force to joint
   for (size_t i = 0; i < this->dataPtr->controls.size(); ++i)
@@ -568,8 +609,12 @@ void gz::sim::systems::ArduPilotPlugin::Configure(
 
   // Load sensor params
   this->LoadImuSensors(sdfClone, _ecm);
+#ifdef ADD_MAGNETOMETER
   this->LoadMagnetometerSensors(sdfClone, _ecm);
+#endif
+#ifdef ADD_ALTIMETER
   this->LoadAltimeterSensors(sdfClone, _ecm);
+#endif
   this->LoadGpsSensors(sdfClone, _ecm);
   this->LoadRangeSensors(sdfClone, _ecm);
   this->LoadWindSensors(sdfClone, _ecm);
@@ -883,6 +928,7 @@ void gz::sim::systems::ArduPilotPlugin::LoadImuSensors(
         _sdf->Get("imuName", static_cast<std::string>("imu_sensor")).first;
 }
 
+#ifdef ADD_MAGNETOMETER
 void gz::sim::systems::ArduPilotPlugin::LoadMagnetometerSensors(
     sdf::ElementPtr _sdf,
     gz::sim::EntityComponentManager &/*_ecm*/)
@@ -890,7 +936,8 @@ void gz::sim::systems::ArduPilotPlugin::LoadMagnetometerSensors(
     this->dataPtr->magnetometerName =
         _sdf->Get("magnetometerName", static_cast<std::string>("magnetometer_sensor")).first;
 }
-
+#endif
+#ifdef ADD_ALTIMETER
 void gz::sim::systems::ArduPilotPlugin::LoadAltimeterSensors(
     sdf::ElementPtr _sdf,
     gz::sim::EntityComponentManager &/*_ecm*/)
@@ -898,7 +945,7 @@ void gz::sim::systems::ArduPilotPlugin::LoadAltimeterSensors(
     this->dataPtr->altimeterName =
         _sdf->Get("altimeterName", static_cast<std::string>("altimeter_sensor")).first;
 }
-
+#endif
 
 /////////////////////////////////////////////////
 void gz::sim::systems::ArduPilotPlugin::LoadGpsSensors(
@@ -1190,98 +1237,19 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         this->dataPtr->anemometerInitialized = true;
     }
 
-	/* static bool calledInitMagnetometerOnce{false};
-    if (!this->dataPtr->magnetometerName.empty() &&
-        !this->dataPtr->magnetometerInitialized &&
-        !calledInitMagnetometerOnce)
-    {
-        calledInitMagnetometerOnce = true;
-        std::string magnetometerTopicName;
-
-        // try scoped names first
-        auto entities = entitiesFromScopedName(
-            this->dataPtr->magnetometerName, _ecm, this->dataPtr->model.Entity());
-
-        // fall-back to unscoped name
-        if (entities.empty())
-        {
-          entities = EntitiesFromUnscopedName(
-            this->dataPtr->magnetometerName, _ecm, this->dataPtr->model.Entity());
-        }
-
-        if (!entities.empty())
-        {
-          if (entities.size() > 1)
-          {
-            gzwarn << "Multiple magnetometer with name ["
-                   << this->dataPtr->magnetometerName << "] found. "
-                   << "Using the first one.\n";
-          }
-
-          // select first entity
-          this->dataPtr->magnetometerEntity = *entities.begin();
-
-          // validate
-          if (!_ecm.EntityHasComponentType(this->dataPtr->magnetometerEntity,
-              gz::sim::components::Magnetometer::typeId))
-          {
-            gzerr << "Entity with name ["
-                  << this->dataPtr->magnetometerName
-                  << "] is not an magnetometer.\n";
-          }
-          else
-          {
-            gzmsg << "Found magnetometer with name ["
-                  << this->dataPtr->magnetometerName
-                  << "].\n";
-
-            // verify the parent of the anemometer is a link.
-            gz::sim::Entity parent = _ecm.ParentEntity(
-                this->dataPtr->magnetometerEntity);
-            if (_ecm.EntityHasComponentType(parent,
-                gz::sim::components::Link::typeId))
-            {
-                magnetometerTopicName = gz::sim::scopedName(
-                    this->dataPtr->magnetometerEntity, _ecm) + "/magnetometer";
-
-                gzdbg << "Computed magnetometers topic to be: "
-                    << magnetometerTopicName << ".\n";
-            }
-            else
-            {
-              gzerr << "Parent of magnetometer ["
-                    << this->dataPtr->magnetometerName
-                    << "] is not a link.\n";
-            }
-          }
-        }
-        else
-        {
-            gzerr << "[" << this->dataPtr->modelName << "] "
-                  << "magnetometer [" << this->dataPtr->magnetometerName
-                  << "] not found, abort ArduPilot plugin." << "\n";
-            return;
-        }
-
-        this->dataPtr->node.Subscribe(magnetometerTopicName,
-            &gz::sim::systems::ArduPilotPluginPrivate::MagnetometerCb,
-            this->dataPtr.get());
-
-        // Make sure that the anemometer entity has WorldPose
-        // and WorldLinearVelocity components, which we'll need later.
-        enableComponent<components::WorldPose>(
-            _ecm, this->dataPtr->magnetometerEntity, true);
-        enableComponent<components::WorldLinearVelocity>(
-            _ecm, this->dataPtr->magnetometerEntity, true);
-
-        this->dataPtr->magnetometerInitialized = true;
-    } */
-
     // This lookup is done in PreUpdate() because in Configure()
     // it's not possible to get the fully qualified topic name we want
-    if (!this->dataPtr->imuInitialized || !this->dataPtr->magnetometerInitialized || !this->dataPtr->altimeterInitialized)
+    if (
+		!this->dataPtr->imuInitialized
+#ifdef EXTERNAL_TEST_MODE
+		|| !this->dataPtr->magnetometerInitialized 
+		|| !this->dataPtr->altimeterInitialized
+#endif
+	)
     {
+#ifdef EXTERNAL_TEST_MODE		
 		if (!this->dataPtr->imuInitialized) {
+#endif
 			// Set unconditionally because we're only going to try this once.
         	this->dataPtr->imuInitialized = true;
         	std::string imuTopicName;
@@ -1370,6 +1338,7 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	    _ecm, this->dataPtr->imuLink, true);
         	enableComponent<components::WorldLinearVelocity>(
         	    _ecm, this->dataPtr->imuLink, true);
+#ifdef EXTERNAL_TEST_MODE
 		}
         
 		if (!this->dataPtr->magnetometerInitialized) {
@@ -1553,6 +1522,7 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
 			enableComponent<components::WorldLinearVelocity>(
         	    _ecm, this->dataPtr->altimeterLink, true);
 		}
+#endif
     }
     else
     {
@@ -1838,7 +1808,28 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
     // 16 / 32 channel compatibility
     std::array<uint16_t, 32> pkt_pwm;
     ssize_t recvSize{-1};
-    
+#ifndef EXTERNAL_TEST_MODE
+	uint16_t pkt_magic{0};
+    uint16_t pkt_frame_rate{0};
+    uint16_t pkt_frame_count{0};
+	if (this->dataPtr->have32Channels)
+    {
+      servo_packet_32 pkt;
+      recvSize = getServoPacket(
+          this->dataPtr->sock,
+          this->dataPtr->fcu_address,
+          this->dataPtr->fcu_port_out,
+          waitMs,
+          this->dataPtr->modelName,
+          pkt);
+      pkt_magic = pkt.magic;
+      pkt_frame_rate = pkt.frame_rate;
+      pkt_frame_count = pkt.frame_count;
+      std::copy(std::begin(pkt.pwm), std::end(pkt.pwm), std::begin(pkt_pwm));
+    }
+    else
+    {
+#endif
       servo_packet_16 pkt;
       recvSize = getServoPacket(
           this->dataPtr->sock,
@@ -1847,8 +1838,15 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
           waitMs,
           this->dataPtr->modelName,
           pkt);
+#ifndef EXTERNAL_TEST_MODE
+      pkt_magic = pkt.magic;
+      pkt_frame_rate = pkt.frame_rate;
+      pkt_frame_count = pkt.frame_count;
+#endif
       std::copy(std::begin(pkt.pwm), std::end(pkt.pwm), std::begin(pkt_pwm));
-    
+#ifndef EXTERNAL_TEST_MODE
+	}
+#endif
 
     // didn't receive a packet, increment timeout count if online, then return
     if (recvSize == -1)
@@ -1886,12 +1884,32 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
     oss << "recv " << recvSize << " bytes from "
         << this->dataPtr->fcu_address << ":"
         << this->dataPtr->fcu_port_out << "\n";
+#ifndef EXTERNAL_TEST_MODE
+	// oss << "magic: " << pkt_magic << "\n";
+    // oss << "frame_rate: " << pkt_frame_rate << "\n";
+    oss << "frame_count: " << pkt_frame_count << "\n";
+#endif
     // oss << "pwm: [";
     // for (auto i=0; i<max_servo_channels - 1; ++i) {
     //     oss << pkt_pwm[i] << ", ";
     // }
     // oss << pkt_pwm[max_servo_channels - 1] << "]\n";
     gzdbg << "\n" << oss.str();
+#endif
+
+#ifndef EXTERNAL_TEST_MODE
+
+    // check magic, return if invalid
+    constexpr uint16_t magic_16 = 18458;
+    constexpr uint16_t magic_32 = 29569;
+    uint16_t magic = this->dataPtr->have32Channels ? magic_32 : magic_16;
+    if (magic != pkt_magic)
+    {
+        gzwarn << "Incorrect protocol magic "
+            << pkt_magic << " should be "
+            << magic << "\n";
+        return false;
+    }
 #endif
 
     // the controller is online
@@ -1904,6 +1922,44 @@ bool gz::sim::systems::ArduPilotPlugin::ReceiveServoPacket()
             << this->dataPtr->fcu_address << ":" << this->dataPtr->fcu_port_out
             << "\n";
     }
+
+#ifndef EXTERNAL_TEST_MODE
+    // update frame rate
+    this->dataPtr->fcu_frame_rate = pkt_frame_rate;
+
+    // check for controller reset
+    if (pkt_frame_count < this->dataPtr->fcu_frame_count)
+    {
+        /// \todo(anyone) implement re-initialisation
+        gzwarn << "ArduPilot controller has reset\n";
+    }
+
+    // check for duplicate frame
+    else if (pkt_frame_count == this->dataPtr->fcu_frame_count)
+    {
+        gzwarn << "Duplicate input frame\n";
+
+        // for lock-step resend last state rather than ignore
+        if (this->dataPtr->isLockStep)
+        {
+            this->SendState();
+        }
+
+        return false;
+    }
+
+    // check for skipped frames
+    else if (pkt_frame_count != this->dataPtr->fcu_frame_count + 1
+        && this->dataPtr->arduPilotOnline)
+    {
+        gzwarn << "Missed "
+            << pkt_frame_count - this->dataPtr->fcu_frame_count
+            << " input frames\n";
+    }
+
+    // update frame count
+    this->dataPtr->fcu_frame_count = pkt_frame_count;
+#endif
 
     // reset the connection timeout so we don't accumulate
     this->dataPtr->connectionTimeoutCount = 0;
@@ -1990,6 +2046,7 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
         imuMsg = this->dataPtr->imuMsg;
     }
 
+#ifdef ADD_MAGNETOMETER
  	gz::msgs::Magnetometer magnetometerMsg;
     {
         std::lock_guard<std::mutex> lock(this->dataPtr->magnetometerMsgMutex);
@@ -2000,7 +2057,8 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
         }
         magnetometerMsg = this->dataPtr->magnetometerMsg;
     }
-
+#endif
+#ifdef ADD_ALTIMETER
 	gz::msgs::Altimeter altimeterMsg;
     {
         std::lock_guard<std::mutex> lock(this->dataPtr->altimeterMsgMutex);
@@ -2011,8 +2069,7 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
         }
         altimeterMsg = this->dataPtr->altimeterMsg;
     }
-
-	//gzerr << altimeterMsg.vertical_position();
+#endif
 
     // it is assumed that the imu orientation conforms to the
     // aircraft convention:
@@ -2200,10 +2257,14 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
     }
 
     // build JSON document
+#ifndef EXTERNAL_TEST_MODE
     rapidjson::StringBuffer s;
     rapidjson::Writer<rapidjson::StringBuffer> writer(s);
 
     writer.StartObject();
+
+	writer.Key("timestamp");
+    writer.Double(timestamp);
 
     writer.Key("imu");
     writer.StartObject();
@@ -2244,6 +2305,18 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
     writer.Double(velWldA.Z());
     writer.EndArray();
 
+#ifdef ADD_MAGNETOMETER
+	writer.Key("magnetometer");
+    writer.StartArray();
+    writer.Double(magnetometerMsg.field_tesla().x());
+    writer.Double(magnetometerMsg.field_tesla().y());
+    writer.Double(magnetometerMsg.field_tesla().z());
+    writer.EndArray();
+#endif
+#ifdef ADD_ALTIMETER
+    writer.Key("altimeter");
+    writer.Double(altimeterMsg.vertical_position());
+#endif
     // Range sensor
     {
       // Aquire lock on this->dataPtr->ranges
@@ -2294,6 +2367,38 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
     // get JSON
     this->dataPtr->json_str = "\n" + std::string(s.GetString()) + "\n";
     // gzdbg << this->dataPtr->json_str << "\n";
+#else
+	sensor_packet packet;
+
+	packet.gyro.x = angularVel.X();
+	packet.gyro.y = angularVel.Y();
+	packet.gyro.z = angularVel.Z();
+
+	packet.accel.x = linearAccel.X();
+	packet.accel.y = linearAccel.Y();
+	packet.accel.z = linearAccel.Z();
+
+	packet.position.x = wldAToBdyA.Pos().X();
+	packet.position.y = wldAToBdyA.Pos().Y();
+	packet.position.z = wldAToBdyA.Pos().Z();
+	
+	packet.quaternion[0] = wldAToBdyA.Rot().W();
+	packet.quaternion[1] = wldAToBdyA.Rot().X();
+	packet.quaternion[2] = wldAToBdyA.Rot().Y();
+	packet.quaternion[3] = wldAToBdyA.Rot().Z();
+
+	packet.velocity.x = velWldA.X();
+	packet.velocity.y = velWldA.Y();
+	packet.velocity.z = velWldA.Z();
+
+	packet.mag.x = magnetometerMsg.field_tesla().x();
+	packet.mag.y = magnetometerMsg.field_tesla().y();
+	packet.mag.z = magnetometerMsg.field_tesla().z();
+
+    packet.attitude = altimeterMsg.vertical_position();
+
+	memcpy(&this->dataPtr->outbound_sensor_packet, &packet, sizeof(sensor_packet));
+#endif
 }
 
 /////////////////////////////////////////////////
@@ -2302,15 +2407,27 @@ void gz::sim::systems::ArduPilotPlugin::SendState() const
 #if DEBUG_JSON_IO
     auto bytes_sent =
 #endif
+#ifndef EXTERNAL_TEST_MODE
     this->dataPtr->sock.sendto(
         this->dataPtr->json_str.c_str(),
         this->dataPtr->json_str.size(),
         this->dataPtr->fcu_address,
         this->dataPtr->fcu_port_out);
-
+#else
+	this->dataPtr->sock.sendto(
+        &this->dataPtr->outbound_sensor_packet,
+        sizeof(sensor_packet),
+        this->dataPtr->fcu_address,
+        this->dataPtr->fcu_port_out);
+#endif
 #if DEBUG_JSON_IO
     gzdbg << "sent " << bytes_sent <<  " bytes to "
         << this->dataPtr->fcu_address << ":"
-        << this->dataPtr->fcu_port_out << "\n"
+#ifdef EXTERNAL_TEST_MODE
+	    << this->dataPtr->fcu_port_out << "\n";
+#else
+		<< this->dataPtr->fcu_port_out << "\n"
+		<< "frame_count: " << this->dataPtr->fcu_frame_count << "\n";
+#endif
 #endif
 }

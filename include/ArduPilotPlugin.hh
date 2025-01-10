@@ -22,6 +22,7 @@
 
 #include <gz/sim/System.hh>
 #include <sdf/sdf.hh>
+#include "Config.hh"
 
 namespace gz
 {
@@ -29,12 +30,43 @@ namespace sim
 {
 namespace systems
 {
-
+#ifndef EXTERNAL_TEST_MODE
 // The servo packet received from ArduPilot SITL. Defined in SIM_JSON.h.
+struct servo_packet_16 {
+    uint16_t magic;         // 18458 expected magic value
+    uint16_t frame_rate;
+    uint32_t frame_count;
+    uint16_t pwm[16];
+};
+
+struct servo_packet_32 {
+    uint16_t magic;         // 29569 expected magic value
+    uint16_t frame_rate;
+    uint32_t frame_count;
+    uint16_t pwm[32];
+};
+
+#else
 struct servo_packet_16 {
     uint16_t pwm[16];
 };
 
+struct vector {
+	double x;
+	double y;
+	double z;
+};
+
+struct sensor_packet {
+	vector position;
+	vector gyro;
+	vector accel;
+	vector velocity;
+	double quaternion[4];
+	vector mag;
+	double attitude;
+};
+#endif
 // Forward declare private data class
 class ArduPilotSocketPrivate;
 class ArduPilotPluginPrivate;
@@ -116,7 +148,7 @@ class GZ_SIM_VISIBLE ArduPilotPlugin:
   private: void LoadImuSensors(
       sdf::ElementPtr _sdf,
       gz::sim::EntityComponentManager &_ecm);
-
+#ifdef EXTERNAL_TEST_MODE
   /// \brief Load magnetometer sensors
   private: void LoadMagnetometerSensors(
       sdf::ElementPtr _sdf,
@@ -126,7 +158,7 @@ class GZ_SIM_VISIBLE ArduPilotPlugin:
   private: void LoadAltimeterSensors(
       sdf::ElementPtr _sdf,
       gz::sim::EntityComponentManager &_ecm);
-
+#endif
   /// \brief Load GPS sensors
   private: void LoadGpsSensors(
       sdf::ElementPtr _sdf,

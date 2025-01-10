@@ -1,0 +1,6 @@
+#define EXTERNAL_TEST_MODE
+
+#ifdef EXTERNAL_TEST_MODE
+#define ADD_MAGNETOMETER
+#define ADD_ALTIMETER
+#endif
