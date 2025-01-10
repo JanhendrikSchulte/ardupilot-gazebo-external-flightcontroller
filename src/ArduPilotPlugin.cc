@@ -1241,13 +1241,15 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
     // it's not possible to get the fully qualified topic name we want
     if (
 		!this->dataPtr->imuInitialized
-#ifdef EXTERNAL_TEST_MODE
-		|| !this->dataPtr->magnetometerInitialized 
+#ifdef ADD_MAGNETOMETER
+		|| !this->dataPtr->magnetometerInitialized
+#endif
+#ifdef ADD_ALTIMETER
 		|| !this->dataPtr->altimeterInitialized
 #endif
 	)
     {
-#ifdef EXTERNAL_TEST_MODE		
+#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER)
 		if (!this->dataPtr->imuInitialized) {
 #endif
 			// Set unconditionally because we're only going to try this once.
@@ -1338,9 +1340,10 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	    _ecm, this->dataPtr->imuLink, true);
         	enableComponent<components::WorldLinearVelocity>(
         	    _ecm, this->dataPtr->imuLink, true);
-#ifdef EXTERNAL_TEST_MODE
+#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER)
 		}
-        
+#endif
+#if defined(ADD_MAGNETOMETER)
 		if (!this->dataPtr->magnetometerInitialized) {
 				// Set unconditionally because we're only going to try this once.
         	this->dataPtr->magnetometerInitialized = true;
@@ -1430,8 +1433,10 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	    _ecm, this->dataPtr->magnetometerLink, true);
 			enableComponent<components::WorldLinearVelocity>(
         	    _ecm, this->dataPtr->magnetometerLink, true);
-		}
 
+		}
+#endif
+#ifdef ADD_MAGNETOMETER
 		if (!this->dataPtr->altimeterInitialized) {
 				// Set unconditionally because we're only going to try this once.
         	this->dataPtr->altimeterInitialized = true;
@@ -1515,7 +1520,7 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	    &gz::sim::systems::ArduPilotPluginPrivate::AltimeterCb,
         	    this->dataPtr.get());
 
-        	// Make sure that the 'magnetometerLink' entity has WorldPose
+        	// Make sure that the 'altimeterLink' entity has WorldPose
         	// and WorldLinearVelocity components, which we'll need later.
         	enableComponent<components::WorldPose>(
         	    _ecm, this->dataPtr->altimeterLink, true);
