@@ -67,6 +67,10 @@
 #include <gz/msgs/altimeter.pb.h>
 #include <gz/sim/components/Altimeter.hh>
 #endif
+#ifdef ADD_NAVSAT
+#include <gz/msgs/navsat.pb.h>
+#include <gz/sim/components/NavSat.hh>
+#endif
 
 #include <sdf/sdf.hh>
 
@@ -218,6 +222,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief The entity representing the link containing the imu sensor.
   public: gz::sim::Entity altimeterLink{gz::sim::kNullEntity};
 #endif
+#ifdef ADD_NAVSAT
+  /// \brief The entity representing the link containing the navsat sensor.
+  public: gz::sim::Entity navSatLink{gz::sim::kNullEntity};
+#endif
 
   /// \brief The model name;
   public: std::string modelName;
@@ -266,6 +274,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief The name of the altimeter sensor
   public: std::string altimeterName;
 #endif
+#ifdef ADD_NAVSAT
+  /// \brief The name of the navsat sensor
+  public: std::string navSatName;
+#endif
 
   /// \brief Set true to enforce lock-step simulation
   public: bool isLockStep{false};
@@ -284,6 +296,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief Have we initialized subscription to the altimeter data yet?
   public: bool altimeterInitialized{false};
 #endif
+#ifdef ADD_NAVSAT
+  /// \brief Have we initialized subscription to the navsat data yet?
+  public: bool navSatInitialized{false};
+#endif
 
   /// \brief We need an gz-transport Node to subscribe to IMU data
   public: gz::transport::Node node;
@@ -299,6 +315,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief A copy of the most recently received altimeter data message
   public: gz::msgs::Altimeter altimeterMsg;
 #endif
+#ifdef ADD_NAVSAT
+  /// \brief A copy of the most recently received navsat data message
+  public: gz::msgs::NavSat navSatMsg;
+#endif
 
   /// \brief Have we received at least one IMU data message?
   public: bool imuMsgValid{false};
@@ -311,6 +331,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief Have we received at least one altimeter data message?
   public: bool altimeterMsgValid{false};
 #endif
+#ifdef ADD_NAVSAT
+  /// \brief Have we received at least one navsat data message?
+  public: bool navSatMsgValid{false};
+#endif
 
   /// \brief This mutex should be used when accessing imuMsg or imuMsgValid
   public: std::mutex imuMsgMutex;
@@ -322,6 +346,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
 #ifdef ADD_ALTIMETER
   /// \brief This mutex should be used when accessing altimeterMsg or altimeterMsgValid
   public: std::mutex altimeterMsgMutex;
+#endif
+#ifdef ADD_NAVSAT
+  /// \brief This mutex should be used when accessing navSatMsg or navSatMsgValid
+  public: std::mutex navSatMsgMutex;
 #endif
 
   /// \brief This subscriber callback latches the most recently received
@@ -351,6 +379,16 @@ class gz::sim::systems::ArduPilotPluginPrivate
     std::lock_guard<std::mutex> lock(this->altimeterMsgMutex);
     altimeterMsg = _msg;
     altimeterMsgValid = true;
+  }
+#endif
+#ifdef ADD_NAVSAT
+  /// \brief This subscriber callback latches the most recently received
+  ///        navsat data message for later use.
+  public: void NavSatCb(const gz::msgs::NavSat &_msg)
+  {
+    std::lock_guard<std::mutex> lock(this->navSatMsgMutex);
+    navSatMsg = _msg;
+    navSatMsgValid = true;
   }
 #endif
 
@@ -523,6 +561,20 @@ void gz::sim::systems::ArduPilotPlugin::Reset(const UpdateInfo &_info,
       gz::sim::components::WorldLinearVelocity());
   }
 #endif
+#ifdef ADD_NAVSAT
+  if (!_ecm.EntityHasComponentType(this->dataPtr->navSatLink,
+      components::WorldPose::typeId))
+  {
+      _ecm.CreateComponent(this->dataPtr->navSatLink,
+          gz::sim::components::WorldPose());
+  }
+  if (!_ecm.EntityHasComponentType(this->dataPtr->navSatLink,
+      components::WorldLinearVelocity::typeId))
+  {
+      _ecm.CreateComponent(this->dataPtr->navSatLink,
+      gz::sim::components::WorldLinearVelocity());
+  }
+#endif
 
   // update velocity PID for controls and apply force to joint
   for (size_t i = 0; i < this->dataPtr->controls.size(); ++i)
@@ -614,6 +666,9 @@ void gz::sim::systems::ArduPilotPlugin::Configure(
 #endif
 #ifdef ADD_ALTIMETER
   this->LoadAltimeterSensors(sdfClone, _ecm);
+#endif
+#ifdef ADD_NAVSAT
+  this->LoadNavSatSensors(sdfClone, _ecm);
 #endif
   this->LoadGpsSensors(sdfClone, _ecm);
   this->LoadRangeSensors(sdfClone, _ecm);
@@ -946,6 +1001,15 @@ void gz::sim::systems::ArduPilotPlugin::LoadAltimeterSensors(
         _sdf->Get("altimeterName", static_cast<std::string>("altimeter_sensor")).first;
 }
 #endif
+#ifdef ADD_NAVSAT
+void gz::sim::systems::ArduPilotPlugin::LoadNavSatSensors(
+    sdf::ElementPtr _sdf,
+    gz::sim::EntityComponentManager &/*_ecm*/)
+{
+    this->dataPtr->navSatName =
+        _sdf->Get("navSatName", static_cast<std::string>("navsat_sensor")).first;
+}
+#endif
 
 /////////////////////////////////////////////////
 void gz::sim::systems::ArduPilotPlugin::LoadGpsSensors(
@@ -1247,9 +1311,12 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
 #ifdef ADD_ALTIMETER
 		|| !this->dataPtr->altimeterInitialized
 #endif
+#ifdef ADD_NAVSAT
+		|| !this->dataPtr->navSatInitialized
+#endif
 	)
     {
-#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER)
+#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER) || defined(ADD_NAVSAT)
 		if (!this->dataPtr->imuInitialized) {
 #endif
 			// Set unconditionally because we're only going to try this once.
@@ -1340,7 +1407,7 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	    _ecm, this->dataPtr->imuLink, true);
         	enableComponent<components::WorldLinearVelocity>(
         	    _ecm, this->dataPtr->imuLink, true);
-#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER)
+#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER) || defined(ADD_NAVSAT)
 		}
 #endif
 #if defined(ADD_MAGNETOMETER)
@@ -1349,11 +1416,11 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	this->dataPtr->magnetometerInitialized = true;
         	std::string magnetometerTopicName;
 
-        	// The model must contain an imu sensor element:
-        	//  <sensor name="..." type="imu">
+        	// The model must contain an magnetometer sensor element:
+        	//  <sensor name="..." type="magnetometer">
         	//
         	// Extract the following:
-        	//  - Sensor topic name: to subscribe to the imu data
+        	//  - Sensor topic name: to subscribe to the magnetometer data
         	//  - Link containing the sensor: to get the pose to transform to
         	//    the correct frame for ArduPilot
 
@@ -1436,17 +1503,17 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
 
 		}
 #endif
-#ifdef ADD_MAGNETOMETER
+#ifdef ADD_ALTIMETER
 		if (!this->dataPtr->altimeterInitialized) {
 				// Set unconditionally because we're only going to try this once.
         	this->dataPtr->altimeterInitialized = true;
         	std::string altimeterTopicName;
 
-        	// The model must contain an imu sensor element:
-        	//  <sensor name="..." type="imu">
+        	// The model must contain an altimeter sensor element:
+        	//  <sensor name="..." type="altimeter">
         	//
         	// Extract the following:
-        	//  - Sensor topic name: to subscribe to the imu data
+        	//  - Sensor topic name: to subscribe to the altimeter data
         	//  - Link containing the sensor: to get the pose to transform to
         	//    the correct frame for ArduPilot
 
@@ -1466,7 +1533,7 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	  if (entities.size() > 1)
         	  {
         	    gzwarn << "Multiple altimeter sensors with name ["
-        	           << this->dataPtr->magnetometerName << "] found. "
+        	           << this->dataPtr->altimeterName << "] found. "
         	           << "Using the first one.\n";
         	  }
 
@@ -1497,7 +1564,7 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	        altimeterTopicName = gz::sim::scopedName(
         	            altimeterEntity, _ecm) + "/altimeter";
 
-        	        gzdbg << "Computed magnetometer topic to be: "
+        	        gzdbg << "Computed altimeter topic to be: "
         	            << altimeterTopicName << std::endl;
         	    }
         	    else
@@ -1526,6 +1593,98 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	    _ecm, this->dataPtr->altimeterLink, true);
 			enableComponent<components::WorldLinearVelocity>(
         	    _ecm, this->dataPtr->altimeterLink, true);
+		}
+#endif
+#ifdef ADD_NAVSAT
+		if (!this->dataPtr->navSatInitialized) {
+				// Set unconditionally because we're only going to try this once.
+        	this->dataPtr->navSatInitialized = true;
+        	std::string navSatTopicName;
+
+        	// The model must contain an navsat sensor element:
+        	//  <sensor name="..." type="navsat">
+        	//
+        	// Extract the following:
+        	//  - Sensor topic name: to subscribe to the navsat data
+        	//  - Link containing the sensor: to get the pose to transform to
+        	//    the correct frame for ArduPilot
+
+        	// try scoped names first
+        	auto entities = entitiesFromScopedName(
+        	    this->dataPtr->navSatName, _ecm, this->dataPtr->model.Entity());
+
+        	// fall-back to unscoped name
+        	if (entities.empty())
+        	{
+        	  entities = EntitiesFromUnscopedName(
+        	    this->dataPtr->navSatName, _ecm, this->dataPtr->model.Entity());
+        	}
+
+        	if (!entities.empty())
+        	{
+        	  if (entities.size() > 1)
+        	  {
+        	    gzwarn << "Multiple navsat sensors with name ["
+        	           << this->dataPtr->navSatName << "] found. "
+        	           << "Using the first one.\n";
+        	  }
+
+        	  // select first entity
+        	  gz::sim::Entity navSatEntity = *entities.begin();
+
+        	  // validate
+        	  if (!_ecm.EntityHasComponentType(navSatEntity,
+        	      gz::sim::components::NavSat::typeId))
+        	  {
+        	    gzerr << "Entity with name ["
+        	          << this->dataPtr->navSatName
+        	          << "] is not an navsat sensor\n";
+        	  }
+        	  else
+        	  {
+        	    gzmsg << "Found navsat sensor with name ["
+        	          << this->dataPtr->navSatName
+        	          << "]\n";
+
+        	    // verify the parent of the navsat sensor is a link.
+        	    gz::sim::Entity parent = _ecm.ParentEntity(navSatEntity);
+        	    if (_ecm.EntityHasComponentType(parent,
+        	        gz::sim::components::Link::typeId))
+        	    {
+        	        this->dataPtr->navSatLink = parent;
+
+        	        navSatTopicName = gz::sim::scopedName(
+        	            navSatEntity, _ecm) + "/navsat";
+
+        	        gzdbg << "Computed navsat topic to be: "
+        	            << navSatTopicName << std::endl;
+        	    }
+        	    else
+        	    {
+        	      gzerr << "Parent of navsat sensor ["
+        	            << this->dataPtr->navSatName
+        	            << "] is not a link\n";
+        	    }
+        	  }
+        	}
+        	else
+        	{
+        	    gzerr << "[" << this->dataPtr->modelName << "] "
+        	          << "navsat_sensor [" << this->dataPtr->navSatName
+        	          << "] not found, abort ArduPilot plugin." << "\n";
+        	    return;
+        	}
+
+        	this->dataPtr->node.Subscribe(navSatTopicName,
+        	    &gz::sim::systems::ArduPilotPluginPrivate::NavSatCb,
+        	    this->dataPtr.get());
+
+        	// Make sure that the 'gpsLink' entity has WorldPose
+        	// and WorldLinearVelocity components, which we'll need later.
+        	enableComponent<components::WorldPose>(
+        	    _ecm, this->dataPtr->navSatLink, true);
+			enableComponent<components::WorldLinearVelocity>(
+        	    _ecm, this->dataPtr->navSatLink, true);
 		}
 #endif
     }
@@ -2075,6 +2234,18 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
         altimeterMsg = this->dataPtr->altimeterMsg;
     }
 #endif
+#ifdef ADD_NAVSAT
+	gz::msgs::NavSat navSatMsg;
+    {
+        std::lock_guard<std::mutex> lock(this->dataPtr->navSatMsgMutex);
+        // Wait until we've received a valid message.
+        if (!this->dataPtr->navSatMsgValid)
+        {
+            return;
+        }
+        navSatMsg = this->dataPtr->navSatMsg;
+    }
+#endif
 
     // it is assumed that the imu orientation conforms to the
     // aircraft convention:
@@ -2319,8 +2490,19 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
     writer.EndArray();
 #endif
 #ifdef ADD_ALTIMETER
-    writer.Key("altimeter");
+    writer.Key("altimeter_altitude");
     writer.Double(altimeterMsg.vertical_position());
+#endif
+#ifdef ADD_NAVSAT
+    writer.Key("gps");
+	writer.StartObject();
+	writer.Key("latitude");
+	writer.Doulbe(navsatMsg.latitude_deg());
+	writer.Key("longitude");
+    writer.Double(navsatMsg.longitude_deg());
+	writer.Key("altitude");
+    writer.Double(navsatMsg.altitude());
+	writer.EndObject();
 #endif
     // Range sensor
     {
@@ -2400,7 +2582,11 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
 	packet.mag.y = magnetometerMsg.field_tesla().y();
 	packet.mag.z = magnetometerMsg.field_tesla().z();
 
-    packet.attitude = altimeterMsg.vertical_position();
+    packet.altitude_altimeter = altimeterMsg.vertical_position();
+
+	packet.altitude_gps = navSatMsg.altitude();
+	packet.longitude = navSatMsg.longitude_deg();
+	packet.latitude = navSatMsg.latitude_deg();
 
 	memcpy(&this->dataPtr->outbound_sensor_packet, &packet, sizeof(sensor_packet));
 #endif

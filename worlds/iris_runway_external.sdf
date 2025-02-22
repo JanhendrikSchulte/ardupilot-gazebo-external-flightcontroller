@@ -12,7 +12,7 @@
 	  <linear_velocity>2 0 0</linear_velocity>
 	</wind>-->
 
-	<magnetic_field>5.5644999999999998e-06 2.2875799999999999e-05 -4.2388400000000002e-05</magnetic_field>
+	<!--<magnetic_field>5.5644999999999998e-06 2.2875799999999999e-05 -4.2388400000000002e-05</magnetic_field>-->
 
     <plugin filename="gz-sim-physics-system"
       name="gz::sim::systems::Physics">
@@ -48,6 +48,7 @@
     </scene>
 
     <spherical_coordinates>
+	<!-- TODO-TBD other lat/long-->
       <latitude_deg>-35.363262</latitude_deg>
       <longitude_deg>149.165237</longitude_deg>
       <elevation>584</elevation>

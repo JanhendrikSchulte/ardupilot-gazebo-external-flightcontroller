@@ -159,15 +159,11 @@
         <always_on>1</always_on>
         <update_rate>1000.0</update_rate>
       </sensor>
-	  <sensor name="altimeter_sensor" type="altimeter">
-        <pose degrees="true">0 0 0 0 0 0</pose>
-        <always_on>1</always_on>
-        <update_rate>1000.0</update_rate>
-      </sensor>
 	  <sensor name="magnetometer_sensor" type="magnetometer">
         <pose degrees="true">0 0 0 180 0 0</pose>
         <always_on>1</always_on>
         <update_rate>1000.0</update_rate>
+		<!-- TODO-TBD add noise? change update frequencies?
 		<magnetometer>
           <x>
             <noise type="gaussian">
@@ -187,8 +183,23 @@
               <stddev>0.1</stddev>
             </noise>
           </z>
-        </magnetometer>
+        </magnetometer> -->
 	  </sensor>
+	  <sensor name="altimeter_sensor" type="altimeter">
+        <pose degrees="true">0 0 0 0 0 0</pose>
+        <always_on>1</always_on>
+        <update_rate>1000.0</update_rate>
+      </sensor>
+	  <sensor name="air_pressure_sensor" type="air_pressure">
+        <pose degrees="true">0 0 0 0 0 0</pose>
+        <always_on>1</always_on>
+        <update_rate>1000.0</update_rate>
+      </sensor>
+	  <sensor name="navsat_sensor" type="navsat">
+        <pose degrees="true">0 0 0 0 0 0</pose>
+        <always_on>1</always_on>
+        <update_rate>1000.0</update_rate>
+      </sensor>
     </link>
     <joint name='sensor_box_joint' type='revolute'>
       <child>sensor_box_link</child>

@@ -7,4 +7,5 @@
 #ifdef EXTERNAL_TEST_MODE
 #define ADD_MAGNETOMETER
 #define ADD_ALTIMETER
+#define ADD_NAVSAT
 #endif

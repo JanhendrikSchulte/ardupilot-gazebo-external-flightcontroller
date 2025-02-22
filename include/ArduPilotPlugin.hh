@@ -64,7 +64,10 @@ struct sensor_packet {
 	vector velocity;
 	double quaternion[4];
 	vector mag;
-	double attitude;
+	double altitude_altimeter;
+	double altitude_gps;
+	double longitude;
+	double latitude;
 };
 #endif
 // Forward declare private data class
@@ -148,14 +151,21 @@ class GZ_SIM_VISIBLE ArduPilotPlugin:
   private: void LoadImuSensors(
       sdf::ElementPtr _sdf,
       gz::sim::EntityComponentManager &_ecm);
-#ifdef EXTERNAL_TEST_MODE
+#ifdef ADD_MAGNETOMETER
   /// \brief Load magnetometer sensors
   private: void LoadMagnetometerSensors(
       sdf::ElementPtr _sdf,
       gz::sim::EntityComponentManager &_ecm);
-
-  /// \brief Load magnetometer sensors
+#endif
+#ifdef ADD_ALTIMETER
+  /// \brief Load altimeter sensors
   private: void LoadAltimeterSensors(
+      sdf::ElementPtr _sdf,
+      gz::sim::EntityComponentManager &_ecm);
+#endif
+#ifdef ADD_NAVSAT
+  /// \brief Load nav sat sensors
+  private: void LoadNavSatSensors(
       sdf::ElementPtr _sdf,
       gz::sim::EntityComponentManager &_ecm);
 #endif

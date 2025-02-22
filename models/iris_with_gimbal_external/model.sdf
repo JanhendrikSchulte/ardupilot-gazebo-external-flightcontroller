@@ -204,6 +204,8 @@
       <imuName>iris_with_standoffs_external::sensor_box_link::imu_sensor</imuName>
       <magnetometerName>iris_with_standoffs_external::sensor_box_link::magnetometer_sensor</magnetometerName>
       <altimeterName>iris_with_standoffs_external::sensor_box_link::altimeter_sensor</altimeterName>
+      <barometerName>iris_with_standoffs_external::sensor_box_link::air_pressure_sensor</barometerName>
+      <navSatName>iris_with_standoffs_external::sensor_box_link::navsat_sensor</navSatName>
 
       <!--
           incoming control command [0, 1]
