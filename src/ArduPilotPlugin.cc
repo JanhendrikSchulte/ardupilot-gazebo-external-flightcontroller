@@ -67,6 +67,10 @@
 #include <gz/msgs/altimeter.pb.h>
 #include <gz/sim/components/Altimeter.hh>
 #endif
+#ifdef ADD_BAROMETER
+#include <gz/msgs/fluid_pressure.pb.h>
+#include <gz/sim/components/AirPressureSensor.hh>
+#endif
 #ifdef ADD_NAVSAT
 #include <gz/msgs/navsat.pb.h>
 #include <gz/sim/components/NavSat.hh>
@@ -215,12 +219,16 @@ class gz::sim::systems::ArduPilotPluginPrivate
   public: gz::sim::Entity imuLink{gz::sim::kNullEntity};
 
 #ifdef ADD_MAGNETOMETER
-  /// \brief The entity representing the link containing the imu sensor.
+  /// \brief The entity representing the link containing the magnetometer sensor.
   public: gz::sim::Entity magnetometerLink{gz::sim::kNullEntity};
 #endif
 #ifdef ADD_ALTIMETER
-  /// \brief The entity representing the link containing the imu sensor.
+  /// \brief The entity representing the link containing the altimeter sensor.
   public: gz::sim::Entity altimeterLink{gz::sim::kNullEntity};
+#endif
+#ifdef ADD_BAROMETER
+  /// \brief The entity representing the link containing the air pressure sensor.
+  public: gz::sim::Entity airPressureSensorLink{gz::sim::kNullEntity};
 #endif
 #ifdef ADD_NAVSAT
   /// \brief The entity representing the link containing the navsat sensor.
@@ -274,6 +282,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief The name of the altimeter sensor
   public: std::string altimeterName;
 #endif
+#ifdef ADD_BAROMETER
+  /// \brief The name of the air pressure sensor
+  public: std::string airPressureSensorName;
+#endif
 #ifdef ADD_NAVSAT
   /// \brief The name of the navsat sensor
   public: std::string navSatName;
@@ -285,7 +297,7 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief Set true if have 32 servo channels
   public: bool have32Channels{false};
 
-  /// \brief Have we initialized subscription to the IMU data yet?
+  /// \brief Have we initialized subscription to the imu data yet?
   public: bool imuInitialized{false};
 
 #ifdef ADD_MAGNETOMETER
@@ -295,6 +307,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
 #ifdef ADD_ALTIMETER
   /// \brief Have we initialized subscription to the altimeter data yet?
   public: bool altimeterInitialized{false};
+#endif
+#ifdef ADD_BAROMETER
+  /// \brief Have we initialized subscription to the air pressure data yet?
+  public: bool airPressureSensorInitialized{false};
 #endif
 #ifdef ADD_NAVSAT
   /// \brief Have we initialized subscription to the navsat data yet?
@@ -315,6 +331,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief A copy of the most recently received altimeter data message
   public: gz::msgs::Altimeter altimeterMsg;
 #endif
+#ifdef ADD_BAROMETER
+  /// \brief A copy of the most recently received air pressure sensor data message
+  public: gz::msgs::FluidPressure airPressureSensorMsg;
+#endif
 #ifdef ADD_NAVSAT
   /// \brief A copy of the most recently received navsat data message
   public: gz::msgs::NavSat navSatMsg;
@@ -331,6 +351,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
   /// \brief Have we received at least one altimeter data message?
   public: bool altimeterMsgValid{false};
 #endif
+#ifdef ADD_BAROMETER
+  /// \brief Have we received at least one air pressure sensor data message?
+  public: bool airPressureSensorMsgValid{false};
+#endif
 #ifdef ADD_NAVSAT
   /// \brief Have we received at least one navsat data message?
   public: bool navSatMsgValid{false};
@@ -346,6 +370,10 @@ class gz::sim::systems::ArduPilotPluginPrivate
 #ifdef ADD_ALTIMETER
   /// \brief This mutex should be used when accessing altimeterMsg or altimeterMsgValid
   public: std::mutex altimeterMsgMutex;
+#endif
+#ifdef ADD_BAROMETER
+  /// \brief This mutex should be used when accessing airPressureSensorMsg or airPressureSensorMsgValid
+  public: std::mutex airPressureSensorMsgMutex;
 #endif
 #ifdef ADD_NAVSAT
   /// \brief This mutex should be used when accessing navSatMsg or navSatMsgValid
@@ -379,6 +407,16 @@ class gz::sim::systems::ArduPilotPluginPrivate
     std::lock_guard<std::mutex> lock(this->altimeterMsgMutex);
     altimeterMsg = _msg;
     altimeterMsgValid = true;
+  }
+#endif
+#ifdef ADD_BAROMETER
+  /// \brief This subscriber callback latches the most recently received
+  ///        air pressure data message for later use.
+  public: void AirPressureSensorCb(const gz::msgs::FluidPressure &_msg)
+  {
+    std::lock_guard<std::mutex> lock(this->airPressureSensorMsgMutex);
+    airPressureSensorMsg = _msg;
+    airPressureSensorMsgValid = true;
   }
 #endif
 #ifdef ADD_NAVSAT
@@ -561,6 +599,20 @@ void gz::sim::systems::ArduPilotPlugin::Reset(const UpdateInfo &_info,
       gz::sim::components::WorldLinearVelocity());
   }
 #endif
+#ifdef ADD_BAROMETER
+  if (!_ecm.EntityHasComponentType(this->dataPtr->airPressureSensorLink,
+      components::WorldPose::typeId))
+  {
+      _ecm.CreateComponent(this->dataPtr->airPressureSensorLink,
+          gz::sim::components::WorldPose());
+  }
+  if (!_ecm.EntityHasComponentType(this->dataPtr->airPressureSensorLink,
+      components::WorldLinearVelocity::typeId))
+  {
+      _ecm.CreateComponent(this->dataPtr->airPressureSensorLink,
+      gz::sim::components::WorldLinearVelocity());
+  }
+#endif
 #ifdef ADD_NAVSAT
   if (!_ecm.EntityHasComponentType(this->dataPtr->navSatLink,
       components::WorldPose::typeId))
@@ -666,6 +718,9 @@ void gz::sim::systems::ArduPilotPlugin::Configure(
 #endif
 #ifdef ADD_ALTIMETER
   this->LoadAltimeterSensors(sdfClone, _ecm);
+#endif
+#ifdef ADD_BAROMETER
+  this->LoadAirPressureSensors(sdfClone, _ecm);
 #endif
 #ifdef ADD_NAVSAT
   this->LoadNavSatSensors(sdfClone, _ecm);
@@ -1001,6 +1056,15 @@ void gz::sim::systems::ArduPilotPlugin::LoadAltimeterSensors(
         _sdf->Get("altimeterName", static_cast<std::string>("altimeter_sensor")).first;
 }
 #endif
+#ifdef ADD_BAROMETER
+void gz::sim::systems::ArduPilotPlugin::LoadAirPressureSensors(
+    sdf::ElementPtr _sdf,
+    gz::sim::EntityComponentManager &/*_ecm*/)
+{
+    this->dataPtr->airPressureSensorName =
+        _sdf->Get("airPressureSensorName", static_cast<std::string>("air_pressure_sensor")).first;
+}
+#endif
 #ifdef ADD_NAVSAT
 void gz::sim::systems::ArduPilotPlugin::LoadNavSatSensors(
     sdf::ElementPtr _sdf,
@@ -1311,12 +1375,15 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
 #ifdef ADD_ALTIMETER
 		|| !this->dataPtr->altimeterInitialized
 #endif
+#ifdef ADD_BAROMETER
+		|| !this->dataPtr->airPressureSensorInitialized
+#endif
 #ifdef ADD_NAVSAT
 		|| !this->dataPtr->navSatInitialized
 #endif
 	)
     {
-#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER) || defined(ADD_NAVSAT)
+#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER) || defined(ADD_BAROMETER) || defined(ADD_NAVSAT)
 		if (!this->dataPtr->imuInitialized) {
 #endif
 			// Set unconditionally because we're only going to try this once.
@@ -1407,7 +1474,7 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	    _ecm, this->dataPtr->imuLink, true);
         	enableComponent<components::WorldLinearVelocity>(
         	    _ecm, this->dataPtr->imuLink, true);
-#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER) || defined(ADD_NAVSAT)
+#if defined(ADD_MAGNETOMETER) || defined(ADD_ALTIMETER) || defined(ADD_BAROMETER) || defined(ADD_NAVSAT)
 		}
 #endif
 #if defined(ADD_MAGNETOMETER)
@@ -1593,6 +1660,98 @@ void gz::sim::systems::ArduPilotPlugin::PreUpdate(
         	    _ecm, this->dataPtr->altimeterLink, true);
 			enableComponent<components::WorldLinearVelocity>(
         	    _ecm, this->dataPtr->altimeterLink, true);
+		}
+#endif
+#ifdef ADD_BAROMETER
+		if (!this->dataPtr->airPressureSensorInitialized) {
+				// Set unconditionally because we're only going to try this once.
+        	this->dataPtr->airPressureSensorInitialized = true;
+        	std::string airPressureSensorTopicName;
+
+        	// The model must contain an air_pressure sensor element:
+        	//  <sensor name="..." type="air_pressure">
+        	//
+        	// Extract the following:
+        	//  - Sensor topic name: to subscribe to the air pressure data
+        	//  - Link containing the sensor: to get the pose to transform to
+        	//    the correct frame for ArduPilot
+
+        	// try scoped names first
+        	auto entities = entitiesFromScopedName(
+        	    this->dataPtr->airPressureSensorName, _ecm, this->dataPtr->model.Entity());
+
+        	// fall-back to unscoped name
+        	if (entities.empty())
+        	{
+        	  entities = EntitiesFromUnscopedName(
+        	    this->dataPtr->airPressureSensorName, _ecm, this->dataPtr->model.Entity());
+        	}
+
+        	if (!entities.empty())
+        	{
+        	  if (entities.size() > 1)
+        	  {
+        	    gzwarn << "Multiple air pressure sensors with name ["
+        	           << this->dataPtr->airPressureSensorName << "] found. "
+        	           << "Using the first one.\n";
+        	  }
+
+        	  // select first entity
+        	  gz::sim::Entity airPressureSensorEntity = *entities.begin();
+
+        	  // validate
+        	  if (!_ecm.EntityHasComponentType(airPressureSensorEntity,
+        	      gz::sim::components::AirPressureSensor::typeId))
+        	  {
+        	    gzerr << "Entity with name ["
+        	          << this->dataPtr->airPressureSensorName
+        	          << "] is not an air pressure sensor\n";
+        	  }
+        	  else
+        	  {
+        	    gzmsg << "Found air pressure sensor with name ["
+        	          << this->dataPtr->airPressureSensorName
+        	          << "]\n";
+
+        	    // verify the parent of the air pressure sensor is a link.
+        	    gz::sim::Entity parent = _ecm.ParentEntity(airPressureSensorEntity);
+        	    if (_ecm.EntityHasComponentType(parent,
+        	        gz::sim::components::Link::typeId))
+        	    {
+        	        this->dataPtr->airPressureSensorLink = parent;
+
+					airPressureSensorTopicName = gz::sim::scopedName(
+        	            airPressureSensorEntity, _ecm) + "/air_pressure";
+
+        	        gzdbg << "Computed air pressure sensor topic to be: "
+        	            << airPressureSensorTopicName << std::endl;
+        	    }
+        	    else
+        	    {
+        	      gzerr << "Parent of air pressure sensor ["
+        	            << this->dataPtr->airPressureSensorName
+        	            << "] is not a link\n";
+        	    }
+        	  }
+        	}
+        	else
+        	{
+        	    gzerr << "[" << this->dataPtr->modelName << "] "
+        	          << "air_pressure_sensor [" << this->dataPtr->airPressureSensorName
+        	          << "] not found, abort ArduPilot plugin." << "\n";
+        	    return;
+        	}
+
+        	this->dataPtr->node.Subscribe(airPressureSensorTopicName,
+        	    &gz::sim::systems::ArduPilotPluginPrivate::AirPressureSensorCb,
+        	    this->dataPtr.get());
+
+        	// Make sure that the 'airPressureSensorLink' entity has WorldPose
+        	// and WorldLinearVelocity components, which we'll need later.
+        	enableComponent<components::WorldPose>(
+        	    _ecm, this->dataPtr->airPressureSensorLink, true);
+			enableComponent<components::WorldLinearVelocity>(
+        	    _ecm, this->dataPtr->airPressureSensorLink, true);
 		}
 #endif
 #ifdef ADD_NAVSAT
@@ -2234,6 +2393,18 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
         altimeterMsg = this->dataPtr->altimeterMsg;
     }
 #endif
+#ifdef ADD_BAROMETER
+	gz::msgs::FluidPressure airPressureSensorMsg;
+    {
+        std::lock_guard<std::mutex> lock(this->dataPtr->airPressureSensorMsgMutex);
+        // Wait until we've received a valid message.
+        if (!this->dataPtr->airPressureSensorMsgValid)
+        {
+            return;
+        }
+		airPressureSensorMsg = this->dataPtr->airPressureSensorMsg;
+    }
+#endif
 #ifdef ADD_NAVSAT
 	gz::msgs::NavSat navSatMsg;
     {
@@ -2492,6 +2663,10 @@ void gz::sim::systems::ArduPilotPlugin::CreateStateJSON(
 #ifdef ADD_ALTIMETER
     writer.Key("altimeter_altitude");
     writer.Double(altimeterMsg.vertical_position());
+#endif
+#ifdef ADD_ALTIMETER
+    writer.Key("barometer");
+    writer.Double(airPressureSensorMsg.pressure());
 #endif
 #ifdef ADD_NAVSAT
     writer.Key("gps");

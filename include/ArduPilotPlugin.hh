@@ -163,6 +163,12 @@ class GZ_SIM_VISIBLE ArduPilotPlugin:
       sdf::ElementPtr _sdf,
       gz::sim::EntityComponentManager &_ecm);
 #endif
+#ifdef ADD_BAROMETER
+  /// \brief Load air pressure sensors
+  private: void LoadAirPressureSensors(
+      sdf::ElementPtr _sdf,
+      gz::sim::EntityComponentManager &_ecm);
+#endif
 #ifdef ADD_NAVSAT
   /// \brief Load nav sat sensors
   private: void LoadNavSatSensors(
